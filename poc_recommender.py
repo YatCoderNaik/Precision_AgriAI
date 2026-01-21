@@ -16,60 +16,69 @@ def init_earth_engine():
         sys.exit(1)
 
 def get_alpha_earth_embedding(lat, lon, year=2022):
-    """
-    Fetches the 64-dimensional embedding vector from AlphaEarth Foundations.
-    Target Year: 2022
-    Collection: GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL
-    """
-    print(f"[INFO] Fetching embeddings for Point({lat}, {lon}) Year: {year}...")
-    
+    """Fetches AlphaEarth 64-dim embeddings (Robust)."""
+    print(f"[INFO] Fetching AlphaEarth for Point({lat}, {lon}) Year: {year}...")
     point = ee.Geometry.Point([lon, lat])
     collection = ee.ImageCollection("GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL")
     
-    # Selection logic: Use date filter as 'year' property is missing
-    start_date = f"{year}-01-01"
-    end_date = f"{year + 1}-01-01"
-    
-    filtered = collection.filterBounds(point).filterDate(start_date, end_date)
+    # Selection logic: Use filterBounds + filterDate as 'year' property can be tricky
+    filtered = collection.filterBounds(point).filterDate(f"{year}-01-01", f"{year + 1}-01-01")
     image = filtered.first()
     
-    if image is None or image.getInfo() is None:
-        print(f"[WARN] No image found for year {year} at this location.")
-        return None
+    if not image or image.getInfo() is None: return None
 
-    # Debug info
-    props = image.getInfo().get('properties', {})
-    ts = props.get('system:time_start')
-    print(f"[DEBUG] Found Image: {image.id().getInfo()} (system:time_start: {ts})")
-
-    # 3. Sample the point with robust mean reducer
-    features = image.reduceRegion(
-        reducer=ee.Reducer.mean(), 
-        geometry=point,
-        scale=30, # 30m to ensure we are not hitting a tiny mask gap
-        bestEffort=True
-    )
+    features = image.reduceRegion(reducer=ee.Reducer.mean(), geometry=point, scale=30, bestEffort=True)
+    data = features.getInfo()
+    if not data or all(v is None for v in data.values()): return None
     
-    # 4. Extract values
-    try:
-        data = features.getInfo()
-        if not data or all(v is None for v in data.values()):
-            print("[WARN] No data found at this location (masked pixel).")
-            return None
-    except Exception as e:
-        print(f"[ERROR] Failed during reduceRegion.getInfo(): {e}")
-        return None
-        
-    vector = []
-    # Band names are A00, A01, ..., A63
-    sorted_keys = sorted([k for k in data.keys() if k.startswith('A')])
-    
-    for k in sorted_keys:
-        val = data[k]
-        vector.append(float(val) if val is not None else 0.0)
-        
-    print(f"[INFO] Embedding retrieval successful. Dimensions: {len(vector)}")
+    vector = [float(data[k]) if data[k] is not None else 0.0 for k in sorted(data.keys()) if k.startswith('A')]
     return vector
+
+def get_sentinel2_data(lat, lon, year=2022):
+    """Fetches Sentinel-2 MSI RGB/NIR data (Refined)."""
+    print(f"[INFO] Fetching Sentinel-2 for Point({lat}, {lon})...")
+    point = ee.Geometry.Point([lon, lat])
+    s2 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+    
+    # Filter for mid-year (Summer) for the given year
+    image = s2.filterBounds(point).filterDate(f"{year}-06-01", f"{year}-07-31").sort('CLOUDY_PIXEL_PERCENTAGE').first()
+    
+    if not image: return None
+    
+    # Increase scale to 30m for speed and consistency with AlphaEarth
+    stats = image.reduceRegion(reducer=ee.Reducer.mean(), geometry=point, scale=30, bestEffort=True).getInfo()
+    return {
+        "RGB_NIR": [stats.get('B4'), stats.get('B3'), stats.get('B2'), stats.get('B8')],
+        "Cloud_Prob": stats.get('MSK_CLDPRB', 0)
+    }
+
+def get_modis_ndvi(lat, lon, year=2022):
+    """Fetches MODIS NDVI (Refined)."""
+    print(f"[INFO] Fetching MODIS for Point({lat}, {lon})...")
+    point = ee.Geometry.Point([lon, lat])
+    # Use MOD13Q1 250m
+    modis = ee.ImageCollection("MODIS/061/MOD13Q1")
+    image = modis.filterBounds(point).filterDate(f"{year}-01-01", f"{year}-12-31").median() # Median is faster than mean for composites
+    
+    stats = image.reduceRegion(reducer=ee.Reducer.mean(), geometry=point, scale=250, bestEffort=True).getInfo()
+    ndvi = stats.get('NDVI', 0) * 0.0001 if stats.get('NDVI') else 0
+    return {"NDVI_Annual_Median": round(ndvi, 3)}
+
+def get_soil_data(lat, lon):
+    """Fetches SoilGrid data (Clay, Sand, pH)."""
+    print(f"[INFO] Fetching SoilGrid for Point({lat}, {lon})...")
+    point = ee.Geometry.Point([lon, lat])
+    
+    soil_clay = ee.Image("projects/soilgrids-isric/clay_mean").select('clay_0-5cm_mean')
+    soil_ph = ee.Image("projects/soilgrids-isric/phh2o_mean").select('phh2o_0-5cm_mean')
+    
+    clay = soil_clay.reduceRegion(reducer=ee.Reducer.mean(), geometry=point, scale=250).getInfo().get('clay_0-5cm_mean', 0)
+    ph = soil_ph.reduceRegion(reducer=ee.Reducer.mean(), geometry=point, scale=250).getInfo().get('phh2o_0-5cm_mean', 0)
+    
+    return {
+        "Clay_Content_%": clay / 10 if clay else "N/A", # Scaled by 10
+        "Soil_pH": ph / 10 if ph else "N/A" # Scaled by 10
+    }
 
 def interpret_and_recommend(vector, crop_type, loc_name):
     """

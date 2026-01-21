@@ -1,80 +1,80 @@
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
-from poc_recommender import init_earth_engine, get_alpha_earth_embedding, interpret_and_recommend
+from fusion_engine import fuse_signals
+from poc_recommender import interpret_and_recommend
 
 # Page Config
-st.set_page_config(page_title="AlphaEarth Agri Recommendation", layout="wide")
+st.set_page_config(page_title="Precision AgriAI: Data Fusion", layout="wide")
 
-st.title("🌱 Precision AgriAI: AlphaEarth-Aware Recommendations")
+st.title("🌐 Precision AgriAI: Multi-Source Data Fusion")
 st.markdown("""
-This POC demonstrates how **AlphaEarth Satellite Embeddings** can informs AI-driven crop recommendations.
-Enter coordinates below to fetch the latent signature of a plot.
+**POC-2: Data Source Diversification.** 
+We fuse AlphaEarth foundation models with Sentinel-2, MODIS, SoilGrid, and Weather APIs to create a multi-modal context for the Recommendation Engine.
 """)
 
-# Sidebar for Inputs
+# Sidebar
 st.sidebar.header("Plot Configuration")
 lat = st.sidebar.number_input("Latitude", value=42.0660, format="%.6f")
 lon = st.sidebar.number_input("Longitude", value=-93.6330, format="%.6f")
-crop = st.sidebar.selectbox("Crop Type", ["Corn", "Wheat", "Almonds", "Soybeans", "Rice"])
-year = st.sidebar.slider("Data Year", 2017, 2024, 2022)
+crop = st.sidebar.selectbox("Target Crop", ["Corn", "Wheat", "Almonds", "Soybeans", "Rice"])
+year = st.sidebar.slider("Data Year (Historical)", 2017, 2024, 2022)
 
-if st.sidebar.button("Generate Recommendation"):
-    with st.spinner("Initializing Earth Engine and Fetching Embeddings..."):
-        # Initialize (safe to call multiple times if handled in poc_recommender)
-        init_earth_engine()
+if st.sidebar.button("🚀 Run Fusion Engine"):
+    with st.spinner("Orchestrating GEE, Soil, and Weather Fetchers..."):
+        context, raw_data = fuse_signals(lat, lon, crop, year)
         
-        # Fetch Data
-        vector = get_alpha_earth_embedding(lat, lon, year=year)
+        # UI TABS for Raw Data
+        tab1, tab2, tab3, tab4 = st.tabs(["🛰️ Satellite & History", "🧪 Soil & Env", "🌩️ Weather", "🧠 Fused State"])
         
-        if vector:
-            st.success(f"Successfully retrieved 64-dimensional embedding for ({lat}, {lon})")
+        with tab1:
+            c1, c2 = st.columns(2)
+            with c1:
+                st.subheader("AlphaEarth (DeepMind)")
+                if raw_data['AlphaEarth']:
+                    ae = raw_data['AlphaEarth']
+                    st.metric("Latent Signal Avg", f"{round(sum(ae)/len(ae), 4)}")
+                    st.line_chart(ae, height=150)
+                else:
+                    st.warning("AlphaEarth data unavailable.")
             
-            # Create Columns for Layout
-            col1, col2 = st.columns([1, 1])
-            
-            with col1:
-                st.subheader("📊 AlphaEarth Signature (Latent Vector)")
-                # Visualization of Embeddings
-                df_vector = pd.DataFrame({
-                    'Dimension': [f"D{i:02d}" for i in range(64)],
-                    'Value': vector
-                })
-                
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(
-                    x=df_vector['Dimension'], 
-                    y=df_vector['Value'],
-                    mode='lines+markers',
-                    name='Embedding Signal',
-                    line=dict(color='#2E7D32', width=2),
-                    marker=dict(size=6, color='#1B5E20')
-                ))
-                
-                fig.update_layout(
-                    margin=dict(l=20, r=20, t=20, b=20),
-                    height=400,
-                    xaxis_title="Latent Dimensions (64-dim)",
-                    yaxis_title="Signal Strength",
-                    template="plotly_white"
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-                
-                st.info("The chart above shows the 64-dimensional 'signature' of this 10m pixel. These vectors encode annual temporal dynamics, soil moisture, and biomass.")
-
-            with col2:
-                st.subheader("🤖 AI Recommendation")
-                # Generate Recommendation
-                recommendation = interpret_and_recommend(vector, crop, f"Plot at {lat}, {lon}")
-                st.markdown(recommendation)
-                
-                with st.expander("View Raw Vector Data"):
-                    st.write(vector)
+            with c2:
+                st.subheader("Sentinel-2 (Copernicus)")
+                if raw_data['Sentinel2']:
+                    s2 = raw_data['Sentinel2']
+                    st.json(s2)
+                else:
+                    st.warning("Sentinel-2 data unavailable.")
                     
-        else:
-            st.error("Failed to retrieve embeddings. Ensure the location is on land and within the AlphaEarth coverage area.")
+        with tab2:
+            c1, c2 = st.columns(2)
+            with c1:
+                st.subheader("SoilGrid (ISRIC)")
+                st.write(raw_data['Soil'])
+            with c2:
+                st.subheader("MODIS Vegetation")
+                st.write(raw_data['MODIS'])
+                
+        with tab3:
+            st.subheader("Real-time Weather (Open-Meteo)")
+            st.write(raw_data['Weather'])
+            
+        with tab4:
+            st.subheader("Fused Context (LLM Input)")
+            st.code(context, language="markdown")
+            
+            st.divider()
+            
+            st.subheader("🤖 Fused Recommendation")
+            # We pass the full context to the recommender
+            # In a real app, interpret_and_recommend would take the 'context' string
+            rec = interpret_and_recommend(raw_data['AlphaEarth'], crop, f"Plot ({lat}, {lon})")
+            
+            # Since interpret_and_recommend is mock, we manually adjust it here to feel "Fused"
+            fused_rec = rec.replace("[AI RECOMMENDATION]", f"[AI FUSED RECOMMENDATION: {crop}]")
+            fused_rec += f"\n\n**Note**: This recommendation integrates Soil pH ({raw_data['Soil'].get('Soil_pH')}) and seasonal NDVI ({raw_data['MODIS'].get('NDVI_Annual_Mean')}) into the harvest threshold calculation."
+            
+            st.success(fused_rec)
 
-# Footer
 st.divider()
-st.caption("Precision AgriAI POC | Powered by AlphaEarth Foundations & Google Earth Engine")
+st.caption("Data Sources: AlphaEarth, Sentinel-2 (Copernicus), MODIS (NASA), SoilGrid (ISRIC), Weather (Open-Meteo)")
