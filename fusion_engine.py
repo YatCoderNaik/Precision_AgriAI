@@ -24,6 +24,8 @@ def get_weather_data(lat, lon):
         print(f"[ERROR] Weather fetch failed: {e}")
         return None
 
+from summarizer import summarize_vector
+
 def fuse_signals(lat, lon, crop, year=2022):
     """Orchestrates multi-source fetch and fuses them into a semantic context."""
     init_earth_engine()
@@ -39,8 +41,11 @@ def fuse_signals(lat, lon, crop, year=2022):
     # External APIs
     results['Weather'] = get_weather_data(lat, lon)
     
+    # AlphaEarth Summarization
+    ae_summary = summarize_vector(results['AlphaEarth'])
+    results['AlphaEarth_Summary'] = ae_summary
+    
     # Semantic Fusion Logic
-    # We turn these raw signals into a "Context String" for the LLM
     fusion_context = f"FIELD REPORT FUSION: {crop} at ({lat}, {lon})\n"
     
     if results['Soil']:
@@ -61,9 +66,7 @@ def fuse_signals(lat, lon, crop, year=2022):
         fusion_context += f"- OPTICAL SCAN: NIR {rgb_nir[3]}, Cloud Prob {s2.get('Cloud_Prob')}% (Source: Sentinel-2)\n"
         
     if results['AlphaEarth']:
-        ae = results['AlphaEarth']
-        avg_ae = sum(ae)/len(ae) if ae else 0
-        fusion_context += f"- ALPHA EARTH SIGNATURE: 64-dim latent average {avg_ae:.4f} (Source: DeepMind Foundation Model)\n"
+        fusion_context += f"- ALPHA EARTH SEMANTIC: {ae_summary['summary_text']} (Source: Structural Analysis Layer)\n"
 
     return fusion_context, results
 
