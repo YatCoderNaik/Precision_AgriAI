@@ -32,7 +32,7 @@ def summarize_vector(vector):
     elif mean_val < -0.05: tokens.append("Suppressed Latent Response")
     
     # Variance Rules
-    if var_val < 0.005: tokens.append("Uniform Canopy Profile")
+    if var_val < 0.005: tokens.append("Uniform Latent Distribution")
     elif var_val > 0.015: tokens.append("High Structural Heterogeneity")
     
     # Flux Rules
