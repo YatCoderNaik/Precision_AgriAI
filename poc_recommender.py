@@ -111,16 +111,16 @@ def interpret_and_recommend(vector, crop_type, loc_name):
 [POC RECOMMENDATION: {loc_name}]
 
 1. **Crop Health Analysis**: 
-   The AlphaEarth embedding for this {crop_type} plot indicates an 'Optimal' vegetative trajectory. 
-   The mean latent signal value of {avg:.4f} suggests robust photosynthetic activity 
-   and adequate carbon sequestration (Biomass) for this stage of the season.
+   The AlphaEarth embedding for this {crop_type} plot indicates positive vegetation vigor indicators. 
+   The mean latent signal value of {avg:.4f} suggests a robust latent vegetation signal
+   reflecting foundation-model learned surface patterns for this stage of the season.
 
 2. **Environmental Context**: 
    No significant abiotic stress (drought/heat) is flagged in the 64-dim signature. 
-   The soil moisture index, derived from the latent radar components, appears stable.
+   The structural integrity of the latent signature appears stable.
 
 3. **Recommendation**:
-   - **Irrigation**: Maintain current schedule; no evidence of water deficit.
+   - **Irrigation**: Maintain current schedule; no evidence of moisture deficit.
    - **Harvest Plan**: Data suggests reaching maturity within the historical 'Normal' window. 
      Recommend final field moisture testing in 14 days.
 """
