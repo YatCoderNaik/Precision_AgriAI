@@ -80,33 +80,42 @@ def get_soil_data(lat, lon):
         "Soil_pH": ph / 10 if ph else "N/A" # Scaled by 10
     }
 
-def interpret_and_recommend(vector, crop_type, loc_name):
+def interpret_and_recommend(vector, crop_type, loc_name, weather_data=None):
     """
-    Simulates or Performs LLM analysis on the vector.
+    Simulates or Performs LLM analysis on the vector and fused weather signals.
     """
     if not vector or len(vector) < 64:
         return "Error: Incomplete geospatial data."
     
-    # In a real app, this would be an API call to Gemini/OpenAI
-    # For POC, we show the prompt and a "believable" generated response.
-    
+    # Analyze Weather for Guardrails
+    weather_caveat = ""
+    if weather_data:
+        temp = weather_data.get('Temperature', 20)
+        wind = weather_data.get('WindSpeed', 0)
+        if temp < 0:
+            weather_caveat += f"⚠️ CRITICAL: Sub-zero temperature ({temp}°C) detected. High risk of frost damage for {crop_type}. "
+        if wind > 40:
+            weather_caveat += f"⚠️ ADVISORY: High wind speeds ({wind} km/h) may impact spraying or harvest operations. "
+
     prompt = f"""
     ROLE: Expert AI Agronomist
     CONTEXT:
     - Target Crop: {crop_type}
     - Location: {loc_name}
+    - Weather: {weather_data if weather_data else 'Stable'}
     - AlphaEarth Geospatial Embedding (10m Res, Annual Composite):
       {vector[:8]}... (64-dimensional vector)
       
-    TASK: Based on this signature, provide a crop health summary and harvest recommendation.
+    TASK: Based on this signature and weather context, provide a crop health summary and harvest recommendation.
     """
-    
-    print("\n" + "-"*20 + " PROMPT PREVIEW " + "-"*20)
-    print(prompt.strip())
-    print("-" * 56)
     
     if USE_MOCK_LLM:
         avg = sum(vector)/len(vector)
+        # Abiotic Stress Section Logic
+        stress_info = "No significant abiotic stress (heat/drought) is flagged in the 64-dim signature."
+        if weather_caveat:
+            stress_info = f"{weather_caveat} The structural integrity of the latent signature remains stable, but immediate weather protection is advised."
+
         return f"""
 [POC RECOMMENDATION: {loc_name}]
 
@@ -116,11 +125,10 @@ def interpret_and_recommend(vector, crop_type, loc_name):
    reflecting foundation-model learned surface patterns for this stage of the season.
 
 2. **Environmental Context**: 
-   No significant abiotic stress (drought/heat) is flagged in the 64-dim signature. 
-   The structural integrity of the latent signature appears stable.
+   {stress_info}
 
 3. **Recommendation**:
-   - **Irrigation**: Maintain current schedule; no evidence of moisture deficit.
+   - **Action**: {"Prioritize frost protection measures." if "frost" in weather_caveat else "Maintain current schedule; no evidence of moisture deficit."}
    - **Harvest Plan**: Data suggests reaching maturity within the historical 'Normal' window. 
      Recommend final field moisture testing in 14 days.
 """

@@ -26,7 +26,7 @@ if st.sidebar.button("🚀 Run Analysis"):
         
         # 1. AI Recommendation (Primary Output)
         st.subheader("🤖 AI Fused Recommendation")
-        rec = interpret_and_recommend(raw_data['AlphaEarth'], crop, f"Plot ({lat}, {lon})")
+        rec = interpret_and_recommend(raw_data['AlphaEarth'], crop, f"Plot ({lat}, {lon})", weather_data=raw_data.get('Weather'))
         
         # Enrich recommendation with structural tokens
         if raw_data.get('AlphaEarth_Summary'):
