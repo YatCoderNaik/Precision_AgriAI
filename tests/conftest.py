@@ -17,8 +17,8 @@ from hypothesis import settings, HealthCheck
 
 
 # Configure Hypothesis settings for all tests
-settings.register_profile("default", max_examples=50, deadline=5000)
-settings.register_profile("ci", max_examples=100, deadline=10000)
+settings.register_profile("default", max_examples=50, deadline=5000, database=None)
+settings.register_profile("ci", max_examples=100, deadline=10000, database=None)
 settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
 
 
@@ -98,21 +98,44 @@ def sample_hobli_ids():
     ]
 
 
+@pytest.fixture
+def sample_hobli_directory():
+    """Sample Hobli directory entry"""
+    return {
+        "hobli_id": "hobli_bangalore_001",
+        "hobli_name": "Bangalore North Hobli",
+        "district": "Bangalore Urban",
+        "state": "Karnataka",
+        "officer_id": "officer_001",
+        "officer_name": "Extension Officer Kumar",
+        "officer_phone": "+919876543210",
+        "officer_email": "kumar@agriculture.gov.in",
+    }
+
+
 # ============================================================================
 # AWS Service Mocking Fixtures (moto)
 # ============================================================================
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def mock_dynamodb_service(aws_credentials):
-    """Mock DynamoDB service for testing"""
+    """Mock DynamoDB service for testing
+    
+    Function-scoped to ensure fresh mock for each test.
+    """
     with mock_aws():
         yield boto3.resource("dynamodb", region_name="ap-south-1")
 
 
-@pytest.fixture
+@pytest.fixture(scope="function", autouse=False)
 def mock_dynamodb_tables(mock_dynamodb_service):
-    """Create mock DynamoDB tables for testing"""
+    """Create mock DynamoDB tables for testing
+    
+    This fixture creates fresh tables for each test to ensure isolation.
+    Function-scoped with explicit cleanup to prevent state leakage between
+    Hypothesis examples.
+    """
     dynamodb = mock_dynamodb_service
     
     # Create PrecisionAgri_Plots table
@@ -170,7 +193,42 @@ def mock_dynamodb_tables(mock_dynamodb_service):
         ProvisionedThroughput={"ReadCapacityUnits": 5, "WriteCapacityUnits": 5},
     )
     
-    return {"plots": plots_table, "alerts": alerts_table}
+    # Create PrecisionAgri_HobliDirectory table
+    hobli_directory_table = dynamodb.create_table(
+        TableName="PrecisionAgri_HobliDirectory",
+        KeySchema=[
+            {"AttributeName": "hobli_id", "KeyType": "HASH"},
+        ],
+        AttributeDefinitions=[
+            {"AttributeName": "hobli_id", "AttributeType": "S"},
+            {"AttributeName": "officer_id", "AttributeType": "S"},
+            {"AttributeName": "last_updated", "AttributeType": "S"},
+        ],
+        GlobalSecondaryIndexes=[
+            {
+                "IndexName": "officer_id-last_updated-index",
+                "KeySchema": [
+                    {"AttributeName": "officer_id", "KeyType": "HASH"},
+                    {"AttributeName": "last_updated", "KeyType": "RANGE"},
+                ],
+                "Projection": {"ProjectionType": "ALL"},
+                "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5},
+            }
+        ],
+        BillingMode="PROVISIONED",
+        ProvisionedThroughput={"ReadCapacityUnits": 5, "WriteCapacityUnits": 5},
+    )
+    
+    tables = {
+        "plots": plots_table, 
+        "alerts": alerts_table,
+        "hobli_directory": hobli_directory_table
+    }
+    
+    yield tables
+    
+    # Cleanup is handled by mock_aws context manager
+    # No explicit cleanup needed as tables are destroyed with the mock
 
 
 @pytest.fixture
@@ -210,11 +268,27 @@ def mock_transcribe_service(aws_credentials):
 # Coordinate Strategies
 @st.composite
 def indian_coordinates(draw):
-    """Generate valid coordinates within India's geographic bounds"""
+    """Generate valid coordinates within India's geographic bounds
+    
+    Constrains float values to DynamoDB-compatible range (1e-130 to 1e+126)
+    to avoid number underflow errors.
+    """
     # India's approximate bounds: lat 8-37°N, lon 68-97°E
+    # Round to 6 decimals to ensure values are well within DynamoDB range
     lat = draw(st.floats(min_value=8.0, max_value=37.0, allow_nan=False, allow_infinity=False))
     lon = draw(st.floats(min_value=68.0, max_value=97.0, allow_nan=False, allow_infinity=False))
-    return (round(lat, 6), round(lon, 6))
+    
+    # Round to 6 decimals to avoid very small float values
+    lat = round(lat, 6)
+    lon = round(lon, 6)
+    
+    # Ensure values are not too small (DynamoDB minimum is ~1e-130)
+    if abs(lat) < 1e-100:
+        lat = 8.0
+    if abs(lon) < 1e-100:
+        lon = 68.0
+    
+    return (lat, lon)
 
 
 @st.composite
@@ -247,12 +321,18 @@ def invalid_coordinates(draw):
     return (lat, lon)
 
 
-# NDVI Value Strategies
-ndvi_values = st.floats(min_value=-1.0, max_value=1.0, allow_nan=False, allow_infinity=False)
-healthy_ndvi = st.floats(min_value=0.6, max_value=1.0)
-moderate_ndvi = st.floats(min_value=0.4, max_value=0.6)
-stressed_ndvi = st.floats(min_value=0.2, max_value=0.4)
-critical_ndvi = st.floats(min_value=-1.0, max_value=0.2)
+# NDVI Value Strategies - constrained to DynamoDB-compatible range
+ndvi_values = st.floats(
+    min_value=-1.0, 
+    max_value=1.0, 
+    allow_nan=False, 
+    allow_infinity=False
+).map(lambda x: round(x, 6))  # Round to avoid very small values
+
+healthy_ndvi = st.floats(min_value=0.6, max_value=1.0).map(lambda x: round(x, 6))
+moderate_ndvi = st.floats(min_value=0.4, max_value=0.6).map(lambda x: round(x, 6))
+stressed_ndvi = st.floats(min_value=0.2, max_value=0.4).map(lambda x: round(x, 6))
+critical_ndvi = st.floats(min_value=-1.0, max_value=0.2).map(lambda x: round(x, 6))
 
 
 # Hobli Mapping Strategies
@@ -279,7 +359,7 @@ def plot_data(draw):
         "lon": coords[1],
         "crop": draw(st.sampled_from(crops)),
         "hobli_id": draw(hobli_ids()),
-        "farmer_name": draw(st.text(min_size=3, max_size=50, alphabet=st.characters(whitelist_categories=("Lu", "Ll")))),
+        "farmer_name": draw(st.text(min_size=3, max_size=50, alphabet=st.characters(categories=["Lu", "Ll"]))),
         "phone_number": f"+91{draw(st.integers(min_value=6000000000, max_value=9999999999))}",
     }
 
@@ -287,38 +367,53 @@ def plot_data(draw):
 # Alert Data Strategies
 @st.composite
 def alert_data(draw):
-    """Generate alert data for testing"""
+    """Generate alert data for testing
+    
+    Constrains all float values to DynamoDB-compatible range.
+    """
     risk_levels = ["low", "medium", "high", "critical"]
+    
+    # Generate DynamoDB-compatible float values (rounded to 6 decimals)
+    ndvi = round(draw(ndvi_values), 6)
+    moisture = round(draw(st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False)), 6)
+    temp_anomaly = round(draw(st.floats(min_value=-10.0, max_value=10.0, allow_nan=False, allow_infinity=False)), 6)
     
     return {
         "hobli_id": draw(hobli_ids()),
         "plot_id": f"plot_{draw(st.integers(min_value=1, max_value=9999)):04d}",
         "user_id": f"user_{draw(st.integers(min_value=1, max_value=9999)):04d}",
         "risk_level": draw(st.sampled_from(risk_levels)),
-        "message": draw(st.text(min_size=10, max_size=200)),
+        "message": draw(st.text(min_size=10, max_size=200, alphabet=st.characters(categories=["Lu", "Ll", "Nd", "Zs"]))),
         "gee_proof": {
-            "ndvi_value": draw(ndvi_values),
-            "moisture_index": draw(st.floats(min_value=0.0, max_value=1.0)),
-            "temperature_anomaly": draw(st.floats(min_value=-10.0, max_value=10.0)),
+            "ndvi_value": ndvi,
+            "moisture_index": moisture,
+            "temperature_anomaly": temp_anomaly,
         },
-        "bedrock_reasoning": draw(st.text(min_size=20, max_size=500)),
+        "bedrock_reasoning": draw(st.text(min_size=20, max_size=500, alphabet=st.characters(categories=["Lu", "Ll", "Nd", "Zs", "Po"]))),
     }
 
 
 # GEE Data Strategies
 @st.composite
 def gee_data(draw):
-    """Generate Google Earth Engine data for testing"""
+    """Generate Google Earth Engine data for testing
+    
+    Constrains all float values to DynamoDB-compatible range.
+    """
     from datetime import datetime, timedelta
     
     # Generate a date within the last year
     days_ago = draw(st.integers(min_value=0, max_value=365))
     acquisition_date = (datetime.now() - timedelta(days=days_ago)).isoformat()
     
+    # Round float values to avoid DynamoDB underflow
+    ndvi = round(draw(ndvi_values), 6)
+    cloud_cover = round(draw(st.floats(min_value=0.0, max_value=100.0, allow_nan=False, allow_infinity=False)), 6)
+    
     return {
-        "ndvi_float": draw(ndvi_values),
+        "ndvi_float": ndvi,
         "acquisition_date": acquisition_date,
-        "cloud_cover": draw(st.floats(min_value=0.0, max_value=100.0)),
+        "cloud_cover": cloud_cover,
         "metadata": {
             "sensor": draw(st.sampled_from(["Landsat-8", "Sentinel-2"])),
             "resolution": draw(st.sampled_from(["10m", "30m", "60m"])),
@@ -330,18 +425,24 @@ def gee_data(draw):
 # Sentinel Data Strategies
 @st.composite
 def sentinel_data(draw):
-    """Generate Sentinel-2 imagery data for testing"""
+    """Generate Sentinel-2 imagery data for testing
+    
+    Constrains all float values to DynamoDB-compatible range.
+    """
     from datetime import datetime, timedelta
     
     # Generate a date within the last year
     days_ago = draw(st.integers(min_value=0, max_value=365))
     acquisition_date = (datetime.now() - timedelta(days=days_ago)).isoformat()
     
+    # Round cloud cover to avoid DynamoDB underflow
+    cloud_cover = round(draw(st.floats(min_value=0.0, max_value=100.0, allow_nan=False, allow_infinity=False)), 6)
+    
     return {
-        "image_url": f"https://sentinel-s2-l2a.s3.amazonaws.com/tiles/{draw(st.text(min_size=5, max_size=10))}/TCI.jp2",
-        "tile_id": draw(st.text(min_size=5, max_size=10, alphabet=st.characters(whitelist_categories=("Lu", "Nd")))),
+        "image_url": f"https://sentinel-s2-l2a.s3.amazonaws.com/tiles/{draw(st.text(min_size=5, max_size=10, alphabet=st.characters(categories=['Lu', 'Nd'])))}/TCI.jp2",
+        "tile_id": draw(st.text(min_size=5, max_size=10, alphabet=st.characters(categories=["Lu", "Nd"]))),
         "acquisition_date": acquisition_date,
-        "cloud_cover_percentage": draw(st.floats(min_value=0.0, max_value=100.0)),
+        "cloud_cover_percentage": cloud_cover,
         "resolution": draw(st.sampled_from(["10m", "20m", "60m"])),
     }
 
@@ -388,3 +489,15 @@ class TestDataGenerator:
 def test_data_generator():
     """Fixture providing test data generator"""
     return TestDataGenerator()
+
+
+# ============================================================================
+# Service Fixtures
+# ============================================================================
+
+@pytest.fixture
+def map_service():
+    """Fixture providing MapService instance for testing"""
+    from services.map_service import MapService
+    
+    return MapService()

@@ -192,6 +192,92 @@ def create_alerts_table(dynamodb_client, table_name: str = "PrecisionAgri_Alerts
             raise
 
 
+def create_hobli_directory_table(dynamodb_client, table_name: str = "PrecisionAgri_HobliDirectory", enable_encryption: bool = True):
+    """
+    Create PrecisionAgri_HobliDirectory table for jurisdiction-officer mapping
+    
+    Table Schema:
+    - PK: hobli_id (String)
+    - GSI-1: officer_id (PK), last_updated (SK)
+    
+    Args:
+        dynamodb_client: Boto3 DynamoDB client
+        table_name: Name of the table to create
+        enable_encryption: Enable encryption at rest
+    """
+    try:
+        table_config = {
+            'TableName': table_name,
+            'KeySchema': [
+                {'AttributeName': 'hobli_id', 'KeyType': 'HASH'}  # Partition key
+            ],
+            'AttributeDefinitions': [
+                {'AttributeName': 'hobli_id', 'AttributeType': 'S'},
+                {'AttributeName': 'officer_id', 'AttributeType': 'S'},
+                {'AttributeName': 'last_updated', 'AttributeType': 'S'}
+            ],
+            'GlobalSecondaryIndexes': [
+                {
+                    'IndexName': 'officer_id-last_updated-index',
+                    'KeySchema': [
+                        {'AttributeName': 'officer_id', 'KeyType': 'HASH'},
+                        {'AttributeName': 'last_updated', 'KeyType': 'RANGE'}
+                    ],
+                    'Projection': {'ProjectionType': 'ALL'},
+                    'ProvisionedThroughput': {
+                        'ReadCapacityUnits': 5,
+                        'WriteCapacityUnits': 5
+                    }
+                }
+            ],
+            'BillingMode': 'PROVISIONED',
+            'ProvisionedThroughput': {
+                'ReadCapacityUnits': 5,
+                'WriteCapacityUnits': 5
+            },
+            'Tags': [
+                {'Key': 'Project', 'Value': 'PrecisionAgriAI'},
+                {'Key': 'Environment', 'Value': 'Development'}
+            ]
+        }
+        
+        # Add encryption configuration if enabled
+        if enable_encryption:
+            table_config['SSESpecification'] = {
+                'Enabled': True,
+                'SSEType': 'KMS'
+            }
+        
+        response = dynamodb_client.create_table(**table_config)
+        
+        logger.info(f"Creating table {table_name}...")
+        
+        # Wait for table to be created
+        waiter = dynamodb_client.get_waiter('table_exists')
+        waiter.wait(TableName=table_name)
+        
+        logger.info(f"✓ Table {table_name} created successfully")
+        
+        # Enable point-in-time recovery
+        try:
+            dynamodb_client.update_continuous_backups(
+                TableName=table_name,
+                PointInTimeRecoverySpecification={'PointInTimeRecoveryEnabled': True}
+            )
+            logger.info(f"✓ Point-in-time recovery enabled for {table_name}")
+        except ClientError as e:
+            logger.warning(f"Could not enable point-in-time recovery: {e}")
+        
+        return response
+        
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceInUseException':
+            logger.warning(f"Table {table_name} already exists")
+        else:
+            logger.error(f"Error creating table {table_name}: {e}")
+            raise
+
+
 def delete_table(dynamodb_client, table_name: str):
     """
     Delete a DynamoDB table (use with caution!)
@@ -218,7 +304,7 @@ def delete_table(dynamodb_client, table_name: str):
             raise
 
 
-def validate_tables(dynamodb_client, plots_table: str, alerts_table: str):
+def validate_tables(dynamodb_client, plots_table: str, alerts_table: str, hobli_directory_table: str):
     """
     Validate that DynamoDB tables exist and are configured correctly
     
@@ -226,13 +312,14 @@ def validate_tables(dynamodb_client, plots_table: str, alerts_table: str):
         dynamodb_client: Boto3 DynamoDB client
         plots_table: Name of plots table
         alerts_table: Name of alerts table
+        hobli_directory_table: Name of hobli directory table
         
     Returns:
         Dictionary with validation results
     """
     results = {}
     
-    for table_name in [plots_table, alerts_table]:
+    for table_name in [plots_table, alerts_table, hobli_directory_table]:
         try:
             response = dynamodb_client.describe_table(TableName=table_name)
             table_info = response['Table']
@@ -286,6 +373,11 @@ def main():
         help='Alerts table name (default: PrecisionAgri_Alerts)'
     )
     parser.add_argument(
+        '--hobli-directory-table',
+        default='PrecisionAgri_HobliDirectory',
+        help='Hobli directory table name (default: PrecisionAgri_HobliDirectory)'
+    )
+    parser.add_argument(
         '--enable-encryption',
         action='store_true',
         default=True,
@@ -308,11 +400,12 @@ def main():
             logger.info("Creating DynamoDB tables...")
             create_plots_table(dynamodb, args.plots_table, args.enable_encryption)
             create_alerts_table(dynamodb, args.alerts_table, args.enable_encryption)
+            create_hobli_directory_table(dynamodb, args.hobli_directory_table, args.enable_encryption)
             logger.info("✓ All tables created successfully")
             
         elif args.action == 'validate':
             logger.info("Validating DynamoDB tables...")
-            results = validate_tables(dynamodb, args.plots_table, args.alerts_table)
+            results = validate_tables(dynamodb, args.plots_table, args.alerts_table, args.hobli_directory_table)
             
             print("\n" + "="*60)
             print("DynamoDB Table Validation Results")
@@ -329,6 +422,7 @@ def main():
             if confirm == 'DELETE':
                 delete_table(dynamodb, args.plots_table)
                 delete_table(dynamodb, args.alerts_table)
+                delete_table(dynamodb, args.hobli_directory_table)
                 logger.info("✓ All tables deleted successfully")
             else:
                 logger.info("Deletion cancelled")
@@ -339,8 +433,10 @@ def main():
             if confirm == 'RECREATE':
                 delete_table(dynamodb, args.plots_table)
                 delete_table(dynamodb, args.alerts_table)
+                delete_table(dynamodb, args.hobli_directory_table)
                 create_plots_table(dynamodb, args.plots_table, args.enable_encryption)
                 create_alerts_table(dynamodb, args.alerts_table, args.enable_encryption)
+                create_hobli_directory_table(dynamodb, args.hobli_directory_table, args.enable_encryption)
                 logger.info("✓ All tables recreated successfully")
             else:
                 logger.info("Recreation cancelled")

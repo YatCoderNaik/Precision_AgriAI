@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_6a758c297b1f3c63636ea859532dc07b {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    
+            <div class="folium-map" id="map_6a758c297b1f3c63636ea859532dc07b" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_6a758c297b1f3c63636ea859532dc07b = L.map(
+                "map_6a758c297b1f3c63636ea859532dc07b",
+                {
+                    center: [12.9716, 77.5946],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 12,
+  "zoomControl": true,
+  "preferCanvas": false,
+}
+
+                }
+            );
+
+            
+
+        
+    
+            var tile_layer_6d867e8a866bb09a3da1463f882193ae = L.tileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 19,
+  "maxNativeZoom": 19,
+  "noWrap": false,
+  "attribution": "\u00a9 OpenStreetMap contributors",
+  "subdomains": "abc",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_6d867e8a866bb09a3da1463f882193ae.addTo(map_6a758c297b1f3c63636ea859532dc07b);
+        
+    
+            var macro_element_22e2a592c26250c69a426f0b9d640e90 = L.tileLayer.wms(
+                "https://bhuvan-vec1.nrsc.gov.in/bhuvan/gwc/service/wms",
+                {"attribution": "\u00a9 ISRO Bhuvan", "format": "image/png", "layers": "LISS3", "styles": "", "transparent": true, "version": "1.3.0"}
+            );
+        
+    
+            macro_element_22e2a592c26250c69a426f0b9d640e90.addTo(map_6a758c297b1f3c63636ea859532dc07b);
+        
+    
+            var layer_control_feeabe4a8d625f2425fb32766b60a7db_layers = {
+                base_layers : {
+                    "openstreetmap" : tile_layer_6d867e8a866bb09a3da1463f882193ae,
+                },
+                overlays :  {
+                    "ISRO Bhuvan LISS III" : macro_element_22e2a592c26250c69a426f0b9d640e90,
+                },
+            };
+            let layer_control_feeabe4a8d625f2425fb32766b60a7db = L.control.layers(
+                layer_control_feeabe4a8d625f2425fb32766b60a7db_layers.base_layers,
+                layer_control_feeabe4a8d625f2425fb32766b60a7db_layers.overlays,
+                {
+  "position": "topright",
+  "collapsed": true,
+  "autoZIndex": true,
+}
+            ).addTo(map_6a758c297b1f3c63636ea859532dc07b);
+
+        
+    
+            var marker_b68fc9f9ed78ab6073137dfc4124e4f3 = L.marker(
+                [12.9716, 77.5946],
+                {
+}
+            ).addTo(map_6a758c297b1f3c63636ea859532dc07b);
+        
+    
+            var icon_a9430a2fc4704f28a3563023c330b3ed = L.AwesomeMarkers.icon(
+                {
+  "markerColor": "green",
+  "iconColor": "white",
+  "icon": "info-sign",
+  "prefix": "glyphicon",
+  "extraClasses": "fa-rotate-0",
+}
+            );
+        
+    
+        var popup_c3d216d4761b4556a069685de198a68b = L.popup({
+  "maxWidth": 300,
+});
+
+        
+            
+                var html_efe3456c98f65249b3c051cb368d3e14 = $(`<div id="html_efe3456c98f65249b3c051cb368d3e14" style="width: 100.0%; height: 100.0%;">Test Plot 1<br>Bangalore North Hobli</div>`)[0];
+                popup_c3d216d4761b4556a069685de198a68b.setContent(html_efe3456c98f65249b3c051cb368d3e14);
+            
+        
+
+        marker_b68fc9f9ed78ab6073137dfc4124e4f3.bindPopup(popup_c3d216d4761b4556a069685de198a68b)
+        ;
+
+        
+    
+    
+            marker_b68fc9f9ed78ab6073137dfc4124e4f3.bindTooltip(
+                `<div>
+                     Plot PLOT_001
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_b68fc9f9ed78ab6073137dfc4124e4f3.setIcon(icon_a9430a2fc4704f28a3563023c330b3ed);
+            
+    
+            var marker_eee3becea2927dfdd6055a12125fe10a = L.marker(
+                [12.98, 77.6],
+                {
+}
+            ).addTo(map_6a758c297b1f3c63636ea859532dc07b);
+        
+    
+            var icon_d816b42327bc3272028720153928e6f1 = L.AwesomeMarkers.icon(
+                {
+  "markerColor": "blue",
+  "iconColor": "white",
+  "icon": "info-sign",
+  "prefix": "glyphicon",
+  "extraClasses": "fa-rotate-0",
+}
+            );
+        
+    
+        var popup_35a488497c349b0cf2e6c15e70d87398 = L.popup({
+  "maxWidth": 300,
+});
+
+        
+            
+                var html_ea71d927efda97a935df73b54ddd5bfd = $(`<div id="html_ea71d927efda97a935df73b54ddd5bfd" style="width: 100.0%; height: 100.0%;">Test Plot 2<br>Bangalore North Hobli</div>`)[0];
+                popup_35a488497c349b0cf2e6c15e70d87398.setContent(html_ea71d927efda97a935df73b54ddd5bfd);
+            
+        
+
+        marker_eee3becea2927dfdd6055a12125fe10a.bindPopup(popup_35a488497c349b0cf2e6c15e70d87398)
+        ;
+
+        
+    
+    
+            marker_eee3becea2927dfdd6055a12125fe10a.bindTooltip(
+                `<div>
+                     Plot PLOT_002
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_eee3becea2927dfdd6055a12125fe10a.setIcon(icon_d816b42327bc3272028720153928e6f1);
+            
+    
+            var polygon_65444566f4917375871fc0e143ce4164 = L.polygon(
+                [[12.95, 77.55], [12.95, 77.65], [13.05, 77.65], [13.05, 77.55]],
+                {"bubblingMouseEvents": true, "color": "blue", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "blue", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 1.0, "smoothFactor": 1.0, "stroke": true, "weight": 2}
+            ).addTo(map_6a758c297b1f3c63636ea859532dc07b);
+        
+    
+        var popup_7ebead7cbe346b57d869d00bc9cd9773 = L.popup({
+  "maxWidth": "100%",
+});
+
+        
+            
+                var html_f94d2e441248a530089605804f00e23d = $(`<div id="html_f94d2e441248a530089605804f00e23d" style="width: 100.0%; height: 100.0%;">Hobli: KA_BLR_001</div>`)[0];
+                popup_7ebead7cbe346b57d869d00bc9cd9773.setContent(html_f94d2e441248a530089605804f00e23d);
+            
+        
+
+        polygon_65444566f4917375871fc0e143ce4164.bindPopup(popup_7ebead7cbe346b57d869d00bc9cd9773)
+        ;
+
+        
+    
+    
+            polygon_65444566f4917375871fc0e143ce4164.bindTooltip(
+                `<div>
+                     Jurisdiction: KA_BLR_001
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+</script>
+</html>
