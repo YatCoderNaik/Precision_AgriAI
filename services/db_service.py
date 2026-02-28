@@ -960,3 +960,95 @@ class DbService:
         except ClientError as e:
             logger.error(f"Failed to get officer for plot {user_id}/{plot_id}: {e}")
             raise
+
+    async def get_all_plots(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Get all registered plots for sentry scanning
+        
+        Args:
+            limit: Optional limit on number of plots to return
+            
+        Returns:
+            List of plot dictionaries with all necessary information
+            
+        Raises:
+            ClientError: If DynamoDB operation fails
+        """
+        try:
+            logger.info(f"Retrieving all registered plots (limit={limit})")
+            
+            # Scan the plots table
+            scan_params = {
+                'TableName': self.plots_table
+            }
+            
+            if limit:
+                scan_params['Limit'] = limit
+            
+            response = self.dynamodb.scan(**scan_params)
+            items = response.get('Items', [])
+            
+            # Convert to list of dictionaries
+            plots = []
+            for item in items:
+                plot_dict = {
+                    'plot_id': item.get('plot_id', {}).get('S', ''),
+                    'user_id': item.get('user_id', {}).get('S', ''),
+                    'latitude': float(item.get('latitude', {}).get('N', 0)),
+                    'longitude': float(item.get('longitude', {}).get('N', 0)),
+                    'hobli_id': item.get('hobli_id', {}).get('S', 'unknown'),
+                    'farmer_name': item.get('farmer_name', {}).get('S', ''),
+                    'phone': item.get('phone', {}).get('S', ''),
+                    'crop_type': item.get('crop_type', {}).get('S', ''),
+                    'area_hectares': float(item.get('area_hectares', {}).get('N', 0)) if item.get('area_hectares') else None
+                }
+                plots.append(plot_dict)
+            
+            logger.info(f"Retrieved {len(plots)} registered plots")
+            return plots
+            
+        except ClientError as e:
+            logger.error(f"Failed to retrieve all plots: {e}")
+            raise
+    
+    async def get_officer_by_hobli(self, hobli_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get Extension Officer information for a specific Hobli
+        
+        Args:
+            hobli_id: Hobli identifier
+            
+        Returns:
+            Dictionary with officer information or None if not found
+            
+        Raises:
+            ClientError: If DynamoDB operation fails
+        """
+        try:
+            logger.info(f"Retrieving officer for Hobli {hobli_id}")
+            
+            # Get Hobli directory entry
+            hobli = self.get_hobli_directory(hobli_id)
+            
+            if not hobli:
+                logger.info(f"No directory entry found for Hobli {hobli_id}")
+                return None
+            
+            # Return officer information
+            officer_info = {
+                'officer_id': hobli.officer_id,
+                'name': hobli.officer_name,
+                'phone': hobli.officer_phone,
+                'email': hobli.officer_email,
+                'hobli_id': hobli.hobli_id,
+                'hobli_name': hobli.hobli_name,
+                'district': hobli.district,
+                'state': hobli.state
+            }
+            
+            logger.info(f"Found officer {hobli.officer_id} for Hobli {hobli_id}")
+            return officer_info
+            
+        except ClientError as e:
+            logger.error(f"Failed to get officer for Hobli {hobli_id}: {e}")
+            raise

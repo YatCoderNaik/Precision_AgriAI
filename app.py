@@ -17,6 +17,7 @@ from services.db_service import DbService
 from services.brain_service import BrainService
 from services.voice_service import VoiceService
 from services.sms_service import SMSService
+from services.sentry_service import SentryService
 from services.integration import ServiceIntegration
 from ui.map_interface import MapInterface
 from config.settings import get_settings
@@ -38,6 +39,13 @@ def init_services():
     voice_service = VoiceService()
     sms_service = SMSService(region=settings.aws.region)
     
+    # Initialize sentry service for proactive monitoring
+    sentry_service = SentryService(
+        brain_service=brain_service,
+        db_service=db_service,
+        sms_service=sms_service
+    )
+    
     # Initialize service integration
     integration = ServiceIntegration(
         map_service=map_service,
@@ -54,6 +62,7 @@ def init_services():
         'brain': brain_service,
         'voice': voice_service,
         'sms': sms_service,
+        'sentry': sentry_service,
         'integration': integration,
         'settings': settings
     }
@@ -65,6 +74,7 @@ db_service = services['db']
 brain_service = services['brain']
 voice_service = services['voice']
 sms_service = services['sms']
+sentry_service = services['sentry']
 integration = services['integration']
 settings = services['settings']
 
@@ -991,23 +1001,87 @@ def render_admin_view():
         # Trigger Sentry
         st.subheader("Proactive Monitoring")
         
-        with st.expander("🚨 Trigger Manual Scan", expanded=False):
-            st.markdown("**Manually trigger analysis for a specific plot**")
+        with st.expander("🔍 Daily Scan Simulation", expanded=True):
+            st.markdown("**Simulate daily background scan of all registered plots**")
+            st.caption("Scans all plots, analyzes health, and generates alerts for high-urgency cases")
             
-            scan_plot_id = st.text_input("Plot ID to Scan", placeholder="Enter plot ID")
+            col_scan1, col_scan2 = st.columns(2)
             
-            if st.button("🔍 Trigger Scan", type="secondary", use_container_width=True):
-                if scan_plot_id:
-                    with st.spinner(f"Scanning plot {scan_plot_id}..."):
-                        try:
-                            # Get plot from DB
-                            # For now, use mock coordinates
-                            st.info(f"Manual scan triggered for plot {scan_plot_id}")
-                            st.caption("Full sentry implementation will be available in Phase 3")
-                        except Exception as e:
-                            st.error(f"Scan failed: {str(e)}")
+            with col_scan1:
+                scan_scope = st.radio(
+                    "Scan Scope",
+                    ["All Plots", "Specific Jurisdiction"],
+                    horizontal=True
+                )
+            
+            with col_scan2:
+                if scan_scope == "Specific Jurisdiction":
+                    scan_hobli = st.text_input("Hobli ID", placeholder="e.g., hobli_001")
                 else:
-                    st.warning("Please enter a plot ID")
+                    scan_hobli = None
+            
+            if st.button("🚨 Trigger Daily Scan", type="primary", use_container_width=True):
+                with st.spinner("Running sentry scan... This may take a few minutes."):
+                    try:
+                        # Run async scan
+                        scan_result = asyncio.run(
+                            sentry_service.scan_all_registered_plots(
+                                max_plots=None  # Scan all plots
+                            )
+                        )
+                        
+                        # Display results
+                        st.success(f"✅ Scan complete!")
+                        
+                        # Summary metrics
+                        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                        
+                        with col_m1:
+                            st.metric("Plots Scanned", scan_result.get('scanned', 0))
+                        
+                        with col_m2:
+                            st.metric("Alerts Generated", scan_result.get('alerts_triggered', 0))
+                        
+                        with col_m3:
+                            st.metric("High Urgency", scan_result.get('high_urgency_plots', 0))
+                        
+                        with col_m4:
+                            st.metric("SMS Sent", scan_result.get('sms_sent', 0))
+                        
+                        st.caption(f"Scan duration: {scan_result.get('duration_seconds', 0):.1f}s")
+                        
+                        # Show detailed results if available
+                        if scan_result.get('results'):
+                            st.divider()
+                            st.markdown("**Scan Results**")
+                            
+                            for result in scan_result['results']:
+                                if result.get('alert_triggered'):
+                                    with st.container():
+                                        urgency_color = {
+                                            'high': '🔴',
+                                            'medium': '🟡',
+                                            'low': '🟢'
+                                        }
+                                        
+                                        emoji = urgency_color.get(result.get('urgency', 'low'), '⚪')
+                                        
+                                        st.markdown(f"{emoji} **Plot {result.get('plot_id')}** - {result.get('urgency', 'unknown').upper()} URGENCY")
+                                        st.caption(f"User: {result.get('user_id')} | NDVI: {result.get('ndvi', 0):.3f} | Risk: {result.get('risk_level', 'unknown')} | SMS: {'✅' if result.get('sms_sent') else '❌'}")
+                                        
+                                        if result.get('recommendations'):
+                                            st.text(f"Action: {result['recommendations'][0][:100]}")
+                                        
+                                        st.divider()
+                        
+                        # Show scan failures if any
+                        if scan_result.get('scan_failures', 0) > 0:
+                            st.warning(f"⚠️ {scan_result['scan_failures']} plots failed to scan")
+                        
+                    except Exception as e:
+                        st.error(f"❌ Scan failed: {str(e)}")
+                        logger.error(f"Sentry scan error: {e}", exc_info=True)
+        
         
         st.divider()
         
@@ -1041,6 +1115,8 @@ def render_admin_view():
             "MapService": {"status": "🟢 Operational", "details": "ISRO Bhuvan integration active"},
             "DbService": {"status": "🟢 Operational", "details": "DynamoDB connected"},
             "BrainService": {"status": "🟢 Operational", "details": "GEE + Bedrock active"},
+            "SentryService": {"status": "🟢 Operational", "details": "Proactive monitoring active"},
+            "SMSService": {"status": "🟢 Operational", "details": "AWS SNS notifications"},
             "VoiceService": {"status": "🟡 Pending", "details": "Phase 3 implementation"}
         }
         
@@ -1051,6 +1127,47 @@ def render_admin_view():
                     st.metric(service, info["status"])
                 with col_y:
                     st.caption(info["details"])
+        
+        st.divider()
+        
+        st.subheader("Sentry Service Metrics")
+        
+        try:
+            # Get sentry metrics
+            sentry_metrics = sentry_service.get_metrics()
+            
+            metrics_data = sentry_metrics.get('metrics', {})
+            
+            col_s1, col_s2 = st.columns(2)
+            
+            with col_s1:
+                st.metric("Total Scans", metrics_data.get('total_scans', 0))
+                st.metric("Alerts Triggered", metrics_data.get('alerts_triggered', 0))
+                st.metric("High Urgency Plots", metrics_data.get('high_urgency_plots', 0))
+            
+            with col_s2:
+                st.metric("SMS Sent", metrics_data.get('sms_sent', 0))
+                st.metric("Scan Failures", metrics_data.get('scan_failures', 0))
+                st.metric("Avg Scan Duration", f"{sentry_stats['avg_scan_duration']}s")
+                st.metric("Avg Alerts/Scan", sentry_stats['avg_alerts_per_scan'])
+            
+            # Show recent scan history
+            with st.expander("📜 Recent Scan History", expanded=False):
+                scan_history = sentry_service.get_scan_history(limit=5)
+                
+                if scan_history:
+                    for scan in reversed(scan_history):
+                        st.markdown(f"**{scan.scan_timestamp.strftime('%Y-%m-%d %H:%M:%S')}**")
+                        st.caption(f"Scanned: {scan.total_plots_scanned} plots | "
+                                 f"Alerts: {scan.alerts_generated} | "
+                                 f"High Urgency: {scan.high_urgency_alerts} | "
+                                 f"Duration: {scan.scan_duration_seconds}s")
+                        st.divider()
+                else:
+                    st.info("No scan history available. Run a daily scan to see results.")
+            
+        except Exception as e:
+            st.error(f"Could not fetch sentry stats: {str(e)}")
         
         st.divider()
         
